@@ -13,7 +13,7 @@
  * sheets are created. Check Logger output after running.
  */
 function createAllSheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const results = [];
 
   const sheetsToCreate = [
@@ -106,7 +106,7 @@ function applyHeaderRow_(sheet, headers) {
  * Run from the GAS editor after createAllSheets() to verify.
  */
 function diagSheets() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   Logger.log('=== diagSheets ===');
 
   let missing = 0;
@@ -135,7 +135,7 @@ function diagHeaders(sheetConfigKey) {
     Logger.log(`diagHeaders: unknown key "${sheetConfigKey}"`);
     return;
   }
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     Logger.log(`diagHeaders: sheet not found — ${sheetName}`);
@@ -159,7 +159,7 @@ function deleteAllSheets(confirmed) {
     Logger.log('deleteAllSheets: not confirmed. Call deleteAllSheets(true) to proceed.');
     return;
   }
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   let deleted = 0;
   Object.values(CONFIG.SHEETS).forEach(name => {
     const sheet = ss.getSheetByName(name);
@@ -184,7 +184,7 @@ function clearSheet(sheetConfigKey) {
     Logger.log(`clearSheet: unknown key "${sheetConfigKey}"`);
     return;
   }
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     Logger.log(`clearSheet: sheet not found — ${sheetName}`);
