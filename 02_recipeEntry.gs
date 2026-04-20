@@ -256,6 +256,32 @@ function getRecipeIngredients(recipeId, flattenSubrecipes) {
   return [...direct, ...uniqueChild];
 }
 
+/**
+ * Batch-adds all ingredients for a recipe in a single server call.
+ * Avoids multiple round-trips from the SPA on recipe save.
+ * Each item: { rawName, isPrimary, qty, unit }
+ *
+ * @param {number}   recipeId
+ * @param {Object[]} ingredients
+ */
+function addRecipeIngredientsBatch(recipeId, ingredients) {
+  const FN = 'addRecipeIngredientsBatch';
+  if (!recipeId) throw new Error(`${FN}: recipeId is required`);
+  if (!Array.isArray(ingredients) || ingredients.length === 0) return;
+
+  ingredients.forEach(ing => {
+    addRecipeIngredient(
+      recipeId,
+      ing.rawName || ing.name || '',
+      ing.isPrimary === true,
+      ing.qty       || ing.quantityNote || '',
+      ing.unit      || ing.unitNote     || ''
+    );
+  });
+
+  logInfo(FN, `${ingredients.length} ingredient(s) added to recipe ${recipeId}`);
+}
+
 // ── Recipe Method ─────────────────────────────────────────────
 
 /**
