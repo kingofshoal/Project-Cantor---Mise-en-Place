@@ -1,0 +1,335 @@
+<script>
+// ============================================================
+// 25_recipeForm.html — Recipe entry form + Ingredient master form
+// ============================================================
+
+// ── Form State ────────────────────────────────────────────────
+var RecipeFormState = {
+  ingredients: [],   // [{rawName, isPrimary, qty, unit}]
+  steps:       [],   // [string]
+  masterList:  [],   // [{id, name, category}] — loaded on form open
+  submitting:  false,
+};
+
+// ── Add Recipe View ───────────────────────────────────────────
+
+function renderAddRecipeView(masterList) {
+  RecipeFormState.ingredients = [];
+  RecipeFormState.steps       = [];
+  RecipeFormState.masterList  = masterList || [];
+  RecipeFormState.submitting  = false;
+
+  const suggestOpts = masterList
+    .map(function(i) { return '<option value="' + esc(i.name) + '">'; })
+    .join('');
+
+  return '<div class="view">' +
+    '<div class="page-header flex-between">' +
+      '<div><div class="page-title">Add Recipe</div></div>' +
+      '<a href="#search" class="btn btn-secondary btn-sm">Cancel</a>' +
+    '</div>' +
+
+    // ── Basic info ──────────────────────────────────────────
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-header"><span class="card-title">Basic Info</span></div>' +
+      '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">' +
+
+        formField('Recipe Name', true,
+          '<input id="recipe-name" class="form-input" type="text" placeholder="e.g. Pasta al Limone" autofocus>') +
+
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+          formField('Time', false,
+            '<select id="recipe-time-band" class="form-input">' +
+            ['Quick','Standard','Project'].map(function(b) {
+              return '<option>' + b + '</option>';
+            }).join('') + '</select>') +
+          formField('Skill', false,
+            '<select id="recipe-skill-level" class="form-input">' +
+            ['Easy','Moderate','Challenging'].map(function(s) {
+              return '<option>' + s + '</option>';
+            }).join('') + '</select>') +
+        '</div>' +
+
+        formField('Tags', false,
+          '<input id="recipe-tags" class="form-input" type="text" placeholder="pasta, quick, vegetarian (comma-separated)">') +
+
+        formField('Notes', false,
+          '<textarea id="recipe-notes" class="form-input" rows="2" placeholder="Optional notes…"></textarea>') +
+
+      '</div>' +
+    '</div>' +
+
+    // ── Ingredients ─────────────────────────────────────────
+    '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-header"><span class="card-title">Ingredients</span>' +
+        '<span class="text-muted" style="font-size:11px">● = primary ingredient</span></div>' +
+      '<div style="padding:16px">' +
+
+        '<div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:end;margin-bottom:12px">' +
+          '<div>' +
+            '<label class="form-label">Ingredient</label>' +
+            '<input id="ing-name-input" class="form-input" type="text" list="ing-suggestions"' +
+              ' placeholder="e.g. spaghetti" autocomplete="off"' +
+              ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();addIngredientToForm();}">' +
+            '<datalist id="ing-suggestions">' + suggestOpts + '</datalist>' +
+          '</div>' +
+          '<div>' +
+            '<label class="form-label">Qty</label>' +
+            '<input id="ing-qty" class="form-input" type="text" placeholder="200g"' +
+              ' style="width:72px" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addIngredientToForm();}">'+
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:6px;padding-top:20px">' +
+            '<input id="ing-primary" type="checkbox" style="width:16px;height:16px">' +
+            '<label for="ing-primary" style="font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Primary</label>' +
+          '</div>' +
+          '<button type="button" class="btn btn-primary btn-sm" style="margin-top:20px;white-space:nowrap"' +
+            ' onclick="addIngredientToForm()">+ Add</button>' +
+        '</div>' +
+
+        '<div id="ing-list"><p class="text-muted" style="font-size:13px">No ingredients added yet.</p></div>' +
+
+      '</div>' +
+    '</div>' +
+
+    // ── Method ──────────────────────────────────────────────
+    '<div class="card" style="margin-bottom:20px">' +
+      '<div class="card-header"><span class="card-title">Method</span>' +
+        '<span class="text-muted" style="font-size:11px">Optional — add after saving if preferred</span></div>' +
+      '<div style="padding:16px">' +
+        '<div id="step-list"><p class="text-muted" style="font-size:13px">No steps added yet.</p></div>' +
+        '<button type="button" class="btn btn-secondary btn-sm" style="margin-top:12px"' +
+          ' onclick="addStep()">+ Add Step</button>' +
+      '</div>' +
+    '</div>' +
+
+    '<div style="display:flex;justify-content:flex-end;gap:10px">' +
+      '<a href="#search" class="btn btn-secondary">Cancel</a>' +
+      '<button id="btn-save-recipe" class="btn btn-primary" onclick="saveRecipeForm()">Save Recipe</button>' +
+    '</div>' +
+  '</div>';
+}
+
+// ── Ingredient list management ────────────────────────────────
+
+function addIngredientToForm() {
+  const nameEl = document.getElementById('ing-name-input');
+  const name   = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+
+  RecipeFormState.ingredients.push({
+    rawName:   name,
+    isPrimary: document.getElementById('ing-primary').checked,
+    qty:       document.getElementById('ing-qty').value.trim(),
+    unit:      '',
+  });
+
+  nameEl.value = '';
+  document.getElementById('ing-primary').checked = false;
+  document.getElementById('ing-qty').value = '';
+  nameEl.focus();
+  renderIngredientList();
+}
+
+function removeIngredient(index) {
+  RecipeFormState.ingredients.splice(index, 1);
+  renderIngredientList();
+}
+
+function toggleIngPrimary(index) {
+  RecipeFormState.ingredients[index].isPrimary = !RecipeFormState.ingredients[index].isPrimary;
+  renderIngredientList();
+}
+
+function renderIngredientList() {
+  const el = document.getElementById('ing-list');
+  if (!el) return;
+  if (RecipeFormState.ingredients.length === 0) {
+    el.innerHTML = '<p class="text-muted" style="font-size:13px">No ingredients added yet.</p>';
+    return;
+  }
+  el.innerHTML = RecipeFormState.ingredients.map(function(ing, i) {
+    return '<div class="ing-form-item">' +
+      '<button type="button" class="ing-primary-btn' + (ing.isPrimary ? ' active' : '') +
+        '" onclick="toggleIngPrimary(' + i + ')" title="Toggle primary (filled = primary)">●</button>' +
+      '<span class="ing-form-name">' + esc(ing.rawName) + '</span>' +
+      (ing.qty ? '<span class="ing-form-qty">' + esc(ing.qty) + '</span>' : '') +
+      '<button type="button" class="ing-remove-btn" onclick="removeIngredient(' + i + ')">×</button>' +
+    '</div>';
+  }).join('');
+}
+
+// ── Method step management ────────────────────────────────────
+
+function addStep() {
+  RecipeFormState.steps.push('');
+  renderStepList();
+  setTimeout(function() {
+    var tas = document.querySelectorAll('.step-textarea');
+    if (tas.length) tas[tas.length - 1].focus();
+  }, 30);
+}
+
+function removeStep(index) {
+  // Sync current textarea values before splice
+  syncStepValues();
+  RecipeFormState.steps.splice(index, 1);
+  renderStepList();
+}
+
+function syncStepValues() {
+  document.querySelectorAll('.step-textarea').forEach(function(ta, i) {
+    RecipeFormState.steps[i] = ta.value;
+  });
+}
+
+function renderStepList() {
+  var el = document.getElementById('step-list');
+  if (!el) return;
+  if (RecipeFormState.steps.length === 0) {
+    el.innerHTML = '<p class="text-muted" style="font-size:13px">No steps added yet.</p>';
+    return;
+  }
+  el.innerHTML = RecipeFormState.steps.map(function(step, i) {
+    return '<div class="step-form-item">' +
+      '<span class="step-num">' + (i + 1) + '</span>' +
+      '<textarea class="form-input step-textarea" rows="2"' +
+        ' placeholder="Step ' + (i + 1) + '…">' + esc(step) + '</textarea>' +
+      '<button type="button" class="ing-remove-btn" onclick="removeStep(' + i + ')">×</button>' +
+    '</div>';
+  }).join('');
+}
+
+// ── Save ──────────────────────────────────────────────────────
+
+function saveRecipeForm() {
+  if (RecipeFormState.submitting) return;
+
+  var name = document.getElementById('recipe-name').value.trim();
+  if (!name) { toast('Recipe name is required', 'error'); document.getElementById('recipe-name').focus(); return; }
+  if (RecipeFormState.ingredients.length === 0) { toast('Add at least one ingredient', 'error'); return; }
+
+  var timeBand   = document.getElementById('recipe-time-band').value;
+  var skillLevel = document.getElementById('recipe-skill-level').value;
+  var tags       = document.getElementById('recipe-tags').value.trim();
+  var notes      = document.getElementById('recipe-notes').value.trim();
+
+  syncStepValues();
+  var steps = RecipeFormState.steps.filter(function(s) { return s.trim().length > 0; });
+
+  RecipeFormState.submitting = true;
+  var btn = document.getElementById('btn-save-recipe');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  gs('addRecipe', name, timeBand, skillLevel, tags, notes)
+    .then(function(recipeId) {
+      return gs('addRecipeIngredientsBatch', recipeId, RecipeFormState.ingredients)
+        .then(function() { return recipeId; });
+    })
+    .then(function(recipeId) {
+      var p = steps.length > 0
+        ? gs('addRecipeMethod', recipeId, steps)
+        : Promise.resolve();
+      return p.then(function() { return recipeId; });
+    })
+    .then(function(recipeId) {
+      App.state.searchCache = null;
+      toast('Recipe saved: ' + name, 'success');
+      window.location.hash = '#recipe/' + recipeId;
+    })
+    .catch(function(e) {
+      toast('Save failed: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Save Recipe';
+      RecipeFormState.submitting = false;
+    });
+}
+
+// ── Add Ingredient to Master View ─────────────────────────────
+
+function renderAddIngredientView() {
+  var cats = ['Produce','Protein','Dairy','Grain','Pantry','Spice','Herb',
+              'Condiment','Baking','Alcohol','Uncategorised'];
+
+  return '<div class="view">' +
+    '<div class="page-header flex-between">' +
+      '<div><div class="page-title">Add Ingredient</div>' +
+        '<div class="page-sub">Add a new ingredient to the master list</div></div>' +
+      '<a href="#search" class="btn btn-secondary btn-sm">Cancel</a>' +
+    '</div>' +
+
+    '<div class="card" style="max-width:520px">' +
+      '<div class="card-header"><span class="card-title">Ingredient Details</span></div>' +
+      '<div style="padding:16px;display:flex;flex-direction:column;gap:12px">' +
+
+        formField('Name', true,
+          '<input id="ing-master-name" class="form-input" type="text"' +
+          ' placeholder="e.g. cherry tomatoes" autofocus>') +
+
+        formField('Category', false,
+          '<select id="ing-master-category" class="form-input">' +
+          cats.map(function(c) { return '<option>' + c + '</option>'; }).join('') +
+          '</select>') +
+
+        formField('Taxonomy Tag', false,
+          '<input id="ing-master-tax" class="form-input" type="text"' +
+          ' placeholder="e.g. nightshade, allium (optional)">') +
+
+        '<div>' +
+          '<label class="form-label">Additional Aliases <span class="text-muted">(one per line)</span></label>' +
+          '<textarea id="ing-master-aliases" class="form-input" rows="3"' +
+            ' placeholder="e.g. cherry toms&#10;baby tomatoes&#10;sun tomatoes"></textarea>' +
+        '</div>' +
+
+        '<div style="display:flex;gap:10px;margin-top:4px">' +
+          '<a href="#search" class="btn btn-secondary">Cancel</a>' +
+          '<button id="btn-save-ingredient" class="btn btn-primary" onclick="saveIngredientForm()" style="flex:1">Save Ingredient</button>' +
+        '</div>' +
+
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function saveIngredientForm() {
+  var name     = document.getElementById('ing-master-name').value.trim();
+  if (!name) { toast('Name is required', 'error'); document.getElementById('ing-master-name').focus(); return; }
+
+  var category = document.getElementById('ing-master-category').value;
+  var tax      = document.getElementById('ing-master-tax').value.trim();
+  var aliases  = document.getElementById('ing-master-aliases').value
+    .split('\n').map(function(a) { return a.trim(); }).filter(Boolean);
+
+  var btn = document.getElementById('btn-save-ingredient');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+
+  gs('addIngredientToMaster', name, category, tax)
+    .then(function(ingId) {
+      // Add any extra aliases sequentially
+      return aliases.reduce(function(chain, alias) {
+        return chain.then(function() { return gs('addAlias', alias, ingId); });
+      }, Promise.resolve()).then(function() { return ingId; });
+    })
+    .then(function() {
+      App.state.searchCache = null;
+      App.state.masterList  = null; // force fresh autocomplete list next form load
+      toast('Ingredient saved: ' + name, 'success');
+      window.location.hash = '#search';
+    })
+    .catch(function(e) {
+      toast('Save failed: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Save Ingredient';
+    });
+}
+
+// ── Shared form helpers ───────────────────────────────────────
+
+function formField(label, required, inputHtml) {
+  return '<div>' +
+    '<label class="form-label">' + label + (required ? ' <span style="color:var(--red)">*</span>' : '') + '</label>' +
+    inputHtml +
+    '</div>';
+}
+</script>
