@@ -64,7 +64,7 @@ function logError(source, message, detail) { log(LOG_LEVELS.ERROR, source, messa
  * @returns {GoogleAppsScript.Spreadsheet.Sheet}
  */
 function getOrCreateLogSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(LOG_SHEET_NAME);
 
   if (!sheet) {
@@ -96,7 +96,7 @@ function getOrCreateLogSheet_() {
  */
 function trimLog(keepRows) {
   const keep = (typeof keepRows === 'number' && keepRows > 0) ? keepRows : 500;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss    = getSpreadsheet();
   const sheet = ss.getSheetByName(LOG_SHEET_NAME);
 
   if (!sheet) {
@@ -122,7 +122,7 @@ function trimLog(keepRows) {
  * Run from the GAS editor for a clean slate during development.
  */
 function clearLog() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(LOG_SHEET_NAME);
 
   if (!sheet) {
@@ -148,7 +148,7 @@ function clearLog() {
  */
 function diagLog(n) {
   const limit = (typeof n === 'number' && n > 0) ? n : 20;
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(LOG_SHEET_NAME);
 
   if (!sheet) {
@@ -182,7 +182,7 @@ function diagLog(n) {
  * Useful for getting an overview of system health.
  */
 function diagLogSummary() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getSpreadsheet();
   const sheet = ss.getSheetByName(LOG_SHEET_NAME);
 
   if (!sheet) {
