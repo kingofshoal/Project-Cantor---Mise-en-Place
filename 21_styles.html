@@ -345,5 +345,75 @@ input, select, textarea { font-family: inherit; }
 .mt-24 { margin-top: 24px; }
 .flex  { display: flex; }
 .flex-between { display: flex; justify-content: space-between; align-items: center; }
-.gap-8 { gap: 8px; }
+/* ── Form Components ───────────────────────────────────────── */
+.form-input {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: 14px; background: var(--surface);
+  outline: none; transition: var(--transition); color: var(--text);
+}
+.form-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(46,117,182,0.15); }
+textarea.form-input { resize: vertical; }
+.form-label {
+  display: block; font-size: 13px; font-weight: 600;
+  margin-bottom: 5px; color: var(--text-mid);
+}
+
+/* ── Ingredient Form Items ──────────────────────────────────── */
+.ing-form-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.ing-form-item:last-child { border-bottom: none; }
+.ing-primary-btn {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--border); background: none; cursor: pointer;
+  font-size: 12px; color: var(--border); display: flex;
+  align-items: center; justify-content: center; transition: var(--transition);
+}
+.ing-primary-btn.active { border-color: var(--blue); color: var(--blue); }
+.ing-primary-btn:hover  { border-color: var(--blue); }
+.ing-form-name  { flex: 1; font-size: 14px; font-weight: 500; min-width: 0;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ing-form-qty   { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+.ing-remove-btn {
+  flex-shrink: 0; background: none; border: none; color: var(--text-muted);
+  font-size: 20px; line-height: 1; cursor: pointer; padding: 0 4px;
+  transition: var(--transition);
+}
+.ing-remove-btn:hover { color: var(--red); }
+
+/* ── Method Step Items ──────────────────────────────────────── */
+.step-form-item {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px;
+}
+.step-num {
+  font-size: 13px; font-weight: 700; color: var(--blue);
+  padding-top: 10px; min-width: 20px; flex-shrink: 0;
+}
+
+/* ── Stock View Items ───────────────────────────────────────── */
+.stock-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--border); gap: 10px;
+}
+.stock-item:last-child { border-bottom: none; }
+.stock-item-info {
+  display: flex; flex-direction: column; gap: 2px;
+  flex: 1; min-width: 0;
+}
+.stock-item-name {
+  font-size: 14px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.btn-icon-remove {
+  flex-shrink: 0; background: none; border: none; color: var(--text-muted);
+  font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 4px;
+  transition: var(--transition);
+}
+.btn-icon-remove:hover { color: var(--red); }
+
+/* ── Stock grid responsive ──────────────────────────────────── */
+@media (max-width: 700px) {
+  .stock-grid { grid-template-columns: 1fr !important; }
+}
 </style>
