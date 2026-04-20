@@ -7,6 +7,11 @@
 
 const CONFIG = {
 
+  // ── Spreadsheet ID ─────────────────────────────────────────
+  // Paste the ID from your Sheet URL:
+  // https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
+  SPREADSHEET_ID: 'YOUR_SPREADSHEET_ID_HERE',
+
   // ── Sheet Names ────────────────────────────────────────────
   SHEETS: {
     RECIPES:              'Recipes',
