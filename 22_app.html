@@ -1,0 +1,402 @@
+<script>
+// ============================================================
+// 22_app.html — Core SPA: state, routing, API layer, utilities
+// ============================================================
+
+// ── Server API wrapper ────────────────────────────────────────
+function gs(fnName) {
+  const args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function(resolve, reject) {
+    const runner = google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success === false) reject(new Error(res.error || 'Server error'));
+        else resolve(res && res.hasOwnProperty('data') ? res.data : res);
+      })
+      .withFailureHandler(reject);
+    runner[fnName].apply(runner, args);
+  });
+}
+
+// ── App State & Router ────────────────────────────────────────
+const App = {
+  state: {
+    view: 'dashboard',
+    dashboardData: null,
+    searchCache: null,    // full recipe list for client-side search
+    currentRecipeId: null,
+    activeFilters: {},
+    searchQuery: '',
+    systemStatus: null,
+  },
+
+  init: function() {
+    this.handleHash();
+    window.addEventListener('hashchange', this.handleHash.bind(this));
+  },
+
+  handleHash: function() {
+    const hash = window.location.hash || '#dashboard';
+    this.updateNav(hash);
+    if      (hash === '#dashboard')      this.loadDashboard();
+    else if (hash === '#search')         this.loadSearch();
+    else if (hash === '#admin')          this.loadAdmin();
+    else if (hash.startsWith('#recipe')) {
+      const id = parseInt(hash.split('/')[1]);
+      if (!isNaN(id)) this.loadRecipeDetail(id);
+    }
+    else this.loadDashboard();
+  },
+
+  updateNav: function(hash) {
+    document.querySelectorAll('.nav-link').forEach(function(a) {
+      const view = a.dataset.view;
+      const active =
+        (hash === '#dashboard' && view === 'dashboard') ||
+        (hash === '#search'    && view === 'search')    ||
+        (hash === '#admin'     && view === 'admin')     ||
+        (hash.startsWith('#recipe') && view === 'search');
+      a.classList.toggle('active', active);
+    });
+  },
+
+  setRoot: function(html) {
+    document.getElementById('root').innerHTML = html;
+  },
+
+  setNavStatus: function(text) {
+    document.getElementById('nav-status').textContent = text || '';
+  },
+
+  // ── Dashboard ───────────────────────────────────────────────
+  loadDashboard: function() {
+    const self = this;
+    self.setRoot('<div class="loading-screen"><div class="spinner"></div><p>Loading dashboard…</p></div>');
+
+    gs('getDashboardData')
+      .then(function(data) {
+        self.state.dashboardData = data;
+        self.setNavStatus(data.lastRebuilt ? 'Rebuilt ' + data.lastRebuilt : '');
+        self.setRoot(renderDashboard(data));
+        self.bindDashboardEvents();
+      })
+      .catch(function(e) {
+        self.setRoot(errorView(e.message, 'Could not load dashboard'));
+      });
+  },
+
+  bindDashboardEvents: function() {
+    // Recipe click → detail view
+    document.querySelectorAll('[data-recipe-id]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        const id = parseInt(el.dataset.recipeId);
+        window.location.hash = '#recipe/' + id;
+      });
+    });
+  },
+
+  // ── Search / Recipe List ─────────────────────────────────────
+  loadSearch: function() {
+    const self = this;
+    self.setRoot('<div class="loading-screen"><div class="spinner"></div><p>Loading recipes…</p></div>');
+    // Cache the full recipe list once
+    const fetch = self.state.searchCache
+      ? Promise.resolve(self.state.searchCache)
+      : gs('searchRecipes', { limit: 500 });
+
+    fetch.then(function(results) {
+      self.state.searchCache = results;
+      self.setRoot(renderSearchView(results, self.state.searchQuery, self.state.activeFilters));
+      self.bindSearchEvents(results);
+    }).catch(function(e) {
+      self.setRoot(errorView(e.message, 'Could not load recipes'));
+    });
+  },
+
+  bindSearchEvents: function(allResults) {
+    const self = this;
+    const input = document.getElementById('search-input');
+    if (input) {
+      input.value = self.state.searchQuery;
+      input.addEventListener('input', function() {
+        self.state.searchQuery = input.value;
+        self.applySearchFilter(allResults);
+      });
+      input.focus();
+    }
+    document.querySelectorAll('.filter-chip').forEach(function(chip) {
+      chip.addEventListener('click', function() {
+        const key = chip.dataset.key;
+        const val = chip.dataset.val;
+        if (self.state.activeFilters[key] === val) {
+          delete self.state.activeFilters[key];
+          chip.classList.remove('active');
+        } else {
+          // Deactivate others in same group
+          document.querySelectorAll('.filter-chip[data-key="' + key + '"]')
+            .forEach(function(c) { c.classList.remove('active'); });
+          self.state.activeFilters[key] = val;
+          chip.classList.add('active');
+        }
+        self.applySearchFilter(allResults);
+      });
+    });
+    document.querySelectorAll('[data-recipe-id]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        window.location.hash = '#recipe/' + el.dataset.recipeId;
+      });
+    });
+  },
+
+  applySearchFilter: function(allResults) {
+    const q       = this.state.searchQuery.trim().toLowerCase();
+    const filters = this.state.activeFilters;
+
+    const filtered = allResults.filter(function(r) {
+      if (filters.resultGroup && r.resultGroup !== filters.resultGroup) return false;
+      if (filters.status      && r.status      !== filters.status)      return false;
+      if (filters.timeBand    && r.timeBand    !== filters.timeBand)    return false;
+      if (filters.familyApproved && !r.familyApproved) return false;
+      if (q) {
+        const inName = r.recipeName.toLowerCase().includes(q);
+        const inTags = (r.tags || '').toLowerCase().includes(q);
+        if (!inName && !inTags) return false;
+      }
+      return true;
+    });
+
+    document.getElementById('search-results').innerHTML = renderResultCards(filtered);
+    document.getElementById('result-count').textContent = filtered.length + ' recipes';
+
+    // Rebind click events on new cards
+    document.querySelectorAll('[data-recipe-id]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        window.location.hash = '#recipe/' + el.dataset.recipeId;
+      });
+    });
+  },
+
+  // ── Recipe Detail ────────────────────────────────────────────
+  loadRecipeDetail: function(recipeId) {
+    const self = this;
+    self.state.currentRecipeId = recipeId;
+    self.setRoot('<div class="loading-screen"><div class="spinner"></div><p>Loading recipe…</p></div>');
+    gs('getRecipeDetail', recipeId)
+      .then(function(data) {
+        self.setRoot(renderRecipeDetail(data));
+        self.bindDetailEvents(data);
+      })
+      .catch(function(e) {
+        self.setRoot(errorView(e.message, 'Could not load recipe'));
+      });
+  },
+
+  bindDetailEvents: function(data) {
+    const self = this;
+    const btn = document.getElementById('btn-log-meal');
+    if (btn) btn.addEventListener('click', function() { self.logMeal(data.recipe.id, data.recipe.name); });
+
+    const btnReview = document.getElementById('btn-add-review');
+    if (btnReview) btnReview.addEventListener('click', function() { self.showReviewModal(data.recipe.id, data.recipe.name); });
+
+    const btnList = document.getElementById('btn-shopping-list');
+    if (btnList) btnList.addEventListener('click', function() {
+      self.generateSingleShoppingList(data.recipe.id, data.recipe.name);
+    });
+  },
+
+  logMeal: function(recipeId, recipeName) {
+    const self = this;
+    gs('logMeal', recipeId)
+      .then(function() {
+        toast('Meal logged: ' + recipeName, 'success');
+        self.state.dashboardData = null; // invalidate cache
+        self.state.searchCache = null;
+      })
+      .catch(function(e) { toast('Could not log meal: ' + e.message, 'error'); });
+  },
+
+  showReviewModal: function(recipeId, recipeName) {
+    const self = this;
+    // Load household people for reviewer selection
+    gs('getSystemStatus').then(function() {
+      showModal(renderReviewModal(recipeId, recipeName));
+      document.getElementById('review-submit').addEventListener('click', function() {
+        const personId = parseInt(document.getElementById('review-person').value);
+        const rating   = parseInt(document.getElementById('review-rating').value);
+        const comment  = document.getElementById('review-comment').value;
+        if (!personId || !rating) { toast('Please select reviewer and rating', 'error'); return; }
+        gs('addReview', recipeId, personId, rating, comment)
+          .then(function() {
+            toast('Review saved', 'success');
+            self.closeModal();
+            self.state.searchCache = null;
+          })
+          .catch(function(e) { toast('Could not save review: ' + e.message, 'error'); });
+      });
+    });
+  },
+
+  generateSingleShoppingList: function(recipeId, recipeName) {
+    const self = this;
+    gs('generateShoppingList', 'single', { recipeId: recipeId })
+      .then(function(result) {
+        if (result.message) { toast(result.message, 'info'); return; }
+        showModal(renderShoppingListModal(result, recipeName));
+        self.bindShoppingListEvents(result.listId);
+      })
+      .catch(function(e) { toast('Could not generate list: ' + e.message, 'error'); });
+  },
+
+  bindShoppingListEvents: function(listId) {
+    document.querySelectorAll('.shopping-check').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        const ingId = parseInt(cb.dataset.ingId);
+        gs('setItemAcquired', listId, ingId, cb.checked)
+          .then(function() {
+            const label = document.querySelector('label[data-ing-id="' + ingId + '"]');
+            if (label) label.classList.toggle('acquired', cb.checked);
+          });
+      });
+    });
+  },
+
+  // ── Admin ─────────────────────────────────────────────────────
+  loadAdmin: function() {
+    const self = this;
+    self.setRoot('<div class="loading-screen"><div class="spinner"></div><p>Loading system status…</p></div>');
+    gs('getSystemStatus')
+      .then(function(status) {
+        self.state.systemStatus = status;
+        self.setRoot(renderAdminView(status));
+        self.bindAdminEvents();
+      })
+      .catch(function(e) { self.setRoot(errorView(e.message, 'Could not load admin')); });
+  },
+
+  bindAdminEvents: function() {
+    const self = this;
+    const btn = document.getElementById('btn-rebuild');
+    if (btn) {
+      btn.addEventListener('click', function() {
+        btn.disabled = true;
+        btn.classList.add('btn-loading');
+        btn.textContent = 'Rebuilding…';
+        gs('rebuildAllSummariesApi')
+          .then(function(result) {
+            toast('Rebuild complete (' + result.totalMs + 'ms)', 'success');
+            self.state.dashboardData = null;
+            self.state.searchCache   = null;
+            self.state.systemStatus  = null;
+            btn.disabled = false;
+            btn.classList.remove('btn-loading');
+            btn.textContent = 'Rebuild Now';
+            self.loadAdmin();
+          })
+          .catch(function(e) {
+            toast('Rebuild failed: ' + e.message, 'error');
+            btn.disabled = false;
+            btn.classList.remove('btn-loading');
+            btn.textContent = 'Rebuild Now';
+          });
+      });
+    }
+  },
+
+  closeModal: function() {
+    document.getElementById('modal-overlay').style.display = 'none';
+  },
+};
+
+// ── Utility functions ─────────────────────────────────────────
+
+function showModal(html) {
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-overlay').style.display = 'flex';
+}
+
+function toast(message, type) {
+  const c  = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + (type || 'info');
+  el.textContent = message;
+  c.appendChild(el);
+  setTimeout(function() {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 300ms';
+    setTimeout(function() { el.remove(); }, 300);
+  }, 3500);
+}
+
+function errorView(detail, title) {
+  return '<div class="loading-screen"><p style="color:var(--red);font-weight:600">' +
+    (title || 'Error') + '</p><p class="text-muted">' + (detail || '') + '</p></div>';
+}
+
+function starRating(avg) {
+  if (!avg) return '<span style="color:var(--text-muted);font-size:12px">No reviews</span>';
+  const full  = Math.floor(avg);
+  const half  = avg - full >= 0.5 ? 1 : 0;
+  const empty = 5 - full - half;
+  return '<span class="stars">' +
+    '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(empty) + '</span>';
+}
+
+function scoreBar(score, size) {
+  const pct = Math.round((score || 0) * 100);
+  const cls = size === 'lg' ? 'score-bar-lg' : 'score-bar';
+  const fill = size === 'lg' ? 'score-bar-fill-lg' : 'score-bar-fill';
+  return '<div class="' + cls + '"><div class="' + fill + '" style="width:' + pct + '%"></div></div>';
+}
+
+function groupBadge(group) {
+  const map = {
+    'Can Cook Now':      'badge-green',
+    'Near Match':        'badge-blue',
+    'Missing A Few Items': 'badge-amber',
+    'Shopping Required': 'badge-red',
+  };
+  return '<span class="badge ' + (map[group] || 'badge-muted') + '">' + (group || '') + '</span>';
+}
+
+function stateBadge(state) {
+  return '<span class="badge state-' + (state || '') + '">' +
+    (state === 'use_soon' ? 'Use Soon' : state === 'critical' ? 'Critical!' : state || '') + '</span>';
+}
+
+function renderReviewModal(recipeId, recipeName) {
+  return '<div class="modal-title">Add Review</div>' +
+    '<p class="text-muted" style="margin-bottom:16px">' + recipeName + '</p>' +
+    '<div style="display:flex;flex-direction:column;gap:12px">' +
+    '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Reviewer</label>' +
+    '<select id="review-person" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">' +
+    '<option value="">Select reviewer…</option>' +
+    '</select></div>' +
+    '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Rating</label>' +
+    '<select id="review-rating" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">' +
+    '<option value="">Select rating…</option>' +
+    [5,4,3,2,1].map(function(n) { return '<option value="' + n + '">' + '★'.repeat(n) + ' (' + n + ')</option>'; }).join('') +
+    '</select></div>' +
+    '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Comment</label>' +
+    '<textarea id="review-comment" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;resize:vertical" placeholder="Optional notes…"></textarea></div>' +
+    '<button id="review-submit" class="btn btn-primary" style="width:100%">Save Review</button>' +
+    '</div>';
+}
+
+function renderShoppingListModal(result, name) {
+  const items = result.items || [];
+  return '<div class="modal-title">Shopping List</div>' +
+    '<p class="text-muted" style="margin-bottom:12px">' + name + ' — ' + items.length + ' items</p>' +
+    items.map(function(item) {
+      return '<div class="shopping-item">' +
+        '<input type="checkbox" class="shopping-check" data-ing-id="' + item.ingredientId + '">' +
+        '<label class="shopping-name" data-ing-id="' + item.ingredientId + '">' + item.ingredientName + '</label>' +
+        (item.quantityNotes && item.quantityNotes.length
+          ? '<span class="shopping-qty">' + item.quantityNotes.join(' / ') + '</span>' : '') +
+        '</div>';
+    }).join('') +
+    '<p class="text-muted mt-16" style="font-size:12px">List saved (ID: ' + result.listId + ')</p>';
+}
+
+// ── Bootstrap ─────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() { App.init(); });
+</script>
