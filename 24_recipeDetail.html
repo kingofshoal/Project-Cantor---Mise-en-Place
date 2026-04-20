@@ -23,8 +23,9 @@ function renderSearchView(results, query, activeFilters) {
     '" data-key="familyApproved" data-val="true">★ Family Approved</button>';
 
   return '<div class="view">' +
-    '<div class="page-header">' +
-      '<div class="page-title">Recipes</div>' +
+    '<div class="page-header flex-between">' +
+      '<div><div class="page-title">Recipes</div></div>' +
+      '<a href="#add-recipe" class="btn btn-primary btn-sm">+ Add Recipe</a>' +
     '</div>' +
     '<div class="search-bar">' +
       '<input id="search-input" class="search-input" type="text" placeholder="Search by name, ingredient, or tag…" value="' + esc(query) + '">' +
