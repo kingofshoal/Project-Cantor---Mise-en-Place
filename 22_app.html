@@ -22,7 +22,8 @@ const App = {
   state: {
     view: 'dashboard',
     dashboardData: null,
-    searchCache: null,    // full recipe list for client-side search
+    searchCache: null,
+    masterList: null,       // cached ingredient master list
     currentRecipeId: null,
     activeFilters: {},
     searchQuery: '',
@@ -39,6 +40,9 @@ const App = {
     this.updateNav(hash);
     if      (hash === '#dashboard')      this.loadDashboard();
     else if (hash === '#search')         this.loadSearch();
+    else if (hash === '#stock')          this.loadStock();
+    else if (hash === '#add-recipe')     this.loadAddRecipe();
+    else if (hash === '#add-ingredient') this.loadAddIngredient();
     else if (hash === '#admin')          this.loadAdmin();
     else if (hash.startsWith('#recipe')) {
       const id = parseInt(hash.split('/')[1]);
@@ -51,9 +55,12 @@ const App = {
     document.querySelectorAll('.nav-link').forEach(function(a) {
       const view = a.dataset.view;
       const active =
-        (hash === '#dashboard' && view === 'dashboard') ||
-        (hash === '#search'    && view === 'search')    ||
-        (hash === '#admin'     && view === 'admin')     ||
+        (hash === '#dashboard'      && view === 'dashboard')      ||
+        (hash === '#search'         && view === 'search')         ||
+        (hash === '#stock'          && view === 'stock')          ||
+        (hash === '#add-recipe'     && view === 'add-ingredient') ||
+        (hash === '#add-ingredient' && view === 'add-ingredient') ||
+        (hash === '#admin'          && view === 'admin')          ||
         (hash.startsWith('#recipe') && view === 'search');
       a.classList.toggle('active', active);
     });
@@ -217,9 +224,8 @@ const App = {
 
   showReviewModal: function(recipeId, recipeName) {
     const self = this;
-    // Load household people for reviewer selection
-    gs('getSystemStatus').then(function() {
-      showModal(renderReviewModal(recipeId, recipeName));
+    gs('getHouseholdPeople').then(function(people) {
+      showModal(renderReviewModal(recipeId, recipeName, people));
       document.getElementById('review-submit').addEventListener('click', function() {
         const personId = parseInt(document.getElementById('review-person').value);
         const rating   = parseInt(document.getElementById('review-rating').value);
@@ -257,6 +263,49 @@ const App = {
             if (label) label.classList.toggle('acquired', cb.checked);
           });
       });
+    });
+  },
+
+  // ── Add Recipe ───────────────────────────────────────────────
+  loadAddRecipe: function() {
+    const self = this;
+    self.setRoot('<div class="loading-screen"><div class="spinner"></div><p>Loading form…</p></div>');
+    const fetch = self.state.masterList
+      ? Promise.resolve(self.state.masterList)
+      : gs('getIngredientMasterList');
+    fetch.then(function(masterList) {
+      self.state.masterList = masterList;
+      self.setRoot(renderAddRecipeView(masterList));
+    }).catch(function(e) {
+      self.setRoot(errorView(e.message, 'Could not load ingredient list'));
+    });
+  },
+
+  // ── Add Ingredient ────────────────────────────────────────────
+  loadAddIngredient: function() {
+    this.setRoot(renderAddIngredientView());
+  },
+
+  // ── Stock ─────────────────────────────────────────────────────
+  loadStock: function() {
+    const self = this;
+    self.setRoot('<div class="loading-screen"><div class="spinner"></div><p>Loading stock…</p></div>');
+    const masterFetch = self.state.masterList
+      ? Promise.resolve(self.state.masterList)
+      : gs('getIngredientMasterList');
+
+    Promise.all([
+      gs('getPantryStockList'),
+      gs('getPerishableStockList'),
+      masterFetch,
+    ]).then(function(results) {
+      const pantry      = results[0];
+      const perishables = results[1];
+      const masterList  = results[2];
+      self.state.masterList = masterList;
+      self.setRoot(renderStockView(pantry, perishables, masterList));
+    }).catch(function(e) {
+      self.setRoot(errorView(e.message, 'Could not load stock data'));
     });
   },
 
@@ -363,13 +412,16 @@ function stateBadge(state) {
     (state === 'use_soon' ? 'Use Soon' : state === 'critical' ? 'Critical!' : state || '') + '</span>';
 }
 
-function renderReviewModal(recipeId, recipeName) {
+function renderReviewModal(recipeId, recipeName, people) {
+  const peopleOpts = (people || []).map(function(p) {
+    return '<option value="' + p.id + '">' + esc(p.name) + '</option>';
+  }).join('');
   return '<div class="modal-title">Add Review</div>' +
-    '<p class="text-muted" style="margin-bottom:16px">' + recipeName + '</p>' +
+    '<p class="text-muted" style="margin-bottom:16px">' + esc(recipeName) + '</p>' +
     '<div style="display:flex;flex-direction:column;gap:12px">' +
     '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Reviewer</label>' +
     '<select id="review-person" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">' +
-    '<option value="">Select reviewer…</option>' +
+    '<option value="">Select reviewer…</option>' + peopleOpts +
     '</select></div>' +
     '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:4px">Rating</label>' +
     '<select id="review-rating" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">' +
