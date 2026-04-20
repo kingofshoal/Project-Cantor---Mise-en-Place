@@ -104,7 +104,7 @@ function rebuildAllSummariesApi() {
 function getSystemStatus() {
   const FN = 'getSystemStatus';
   try {
-    const ss     = SpreadsheetApp.getActiveSpreadsheet();
+    const ss     = getSpreadsheet();
     const sheets = {};
 
     Object.entries(CONFIG.SHEETS).forEach(([key, name]) => {
