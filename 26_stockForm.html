@@ -1,0 +1,194 @@
+<script>
+// ============================================================
+// 26_stockForm.html — Stock management: pantry + perishables
+// ============================================================
+
+function renderStockView(pantry, perishables, masterList) {
+  var suggestOpts = masterList
+    .map(function(i) { return '<option value="' + esc(i.name) + '" data-id="' + i.id + '">'; })
+    .join('');
+
+  return '<div class="view">' +
+    '<div class="page-header flex-between">' +
+      '<div><div class="page-title">Stock</div>' +
+        '<div class="page-sub">Manage your pantry and perishables</div></div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="App.loadStock()">↻ Refresh</button>' +
+    '</div>' +
+
+    '<div class="stock-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">' +
+
+      // ── Pantry ──────────────────────────────────────────────
+      '<div>' +
+        '<div class="card" style="margin-bottom:16px">' +
+          '<div class="card-header"><span class="card-title">Add to Pantry</span></div>' +
+          '<div style="padding:14px;display:flex;flex-direction:column;gap:10px">' +
+            '<div>' +
+              '<label class="form-label">Ingredient</label>' +
+              '<input id="pantry-ing-input" class="form-input" list="stock-suggestions"' +
+                ' type="text" placeholder="Search ingredient…" autocomplete="off">' +
+              '<datalist id="stock-suggestions">' + suggestOpts + '</datalist>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px">' +
+              '<input id="pantry-staple" type="checkbox" style="width:16px;height:16px">' +
+              '<label for="pantry-staple" style="font-size:13px;font-weight:600;cursor:pointer">' +
+                'House staple (always assumed present)</label>' +
+            '</div>' +
+            '<button class="btn btn-primary btn-sm" onclick="addPantryItemFromForm()">+ Add to Pantry</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="card">' +
+          '<div class="card-header"><span class="card-title">Pantry</span>' +
+            '<span class="card-count">' + pantry.length + '</span></div>' +
+          '<div style="max-height:400px;overflow-y:auto">' +
+            (pantry.length === 0
+              ? '<div class="card-empty">Pantry is empty.</div>'
+              : pantry.map(function(item) {
+                  return '<div class="stock-item">' +
+                    '<div class="stock-item-info">' +
+                      '<span class="stock-item-name">' + esc(item.ingredientName) + '</span>' +
+                      (item.isStaple ? '<span class="badge badge-blue" style="font-size:10px">staple</span>' : '') +
+                    '</div>' +
+                    '<div style="display:flex;gap:6px;align-items:center">' +
+                      (item.outOfStock
+                        ? '<span class="badge badge-red">Out of stock</span>'
+                        : '<span class="badge badge-green">In stock</span>') +
+                      '<button class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:11px"' +
+                        ' onclick="togglePantryOos(' + item.ingredientId + ', ' + !item.outOfStock + ')">' +
+                        (item.outOfStock ? 'Mark in stock' : 'Mark OOS') + '</button>' +
+                      '<button class="btn-icon-remove" onclick="removePantryItemById(' + item.ingredientId + ')" title="Remove">×</button>' +
+                    '</div>' +
+                  '</div>';
+                }).join('')
+            ) +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      // ── Perishables ─────────────────────────────────────────
+      '<div>' +
+        '<div class="card" style="margin-bottom:16px">' +
+          '<div class="card-header"><span class="card-title">Add Perishable</span></div>' +
+          '<div style="padding:14px;display:flex;flex-direction:column;gap:10px">' +
+            '<div>' +
+              '<label class="form-label">Ingredient</label>' +
+              '<input id="perish-ing-input" class="form-input" list="stock-suggestions"' +
+                ' type="text" placeholder="Search ingredient…" autocomplete="off">' +
+            '</div>' +
+            '<div>' +
+              '<label class="form-label">Use-by date</label>' +
+              '<input id="perish-use-by" class="form-input" type="date">' +
+            '</div>' +
+            '<button class="btn btn-primary btn-sm" onclick="addPerishableFromForm()">+ Add Perishable</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="card">' +
+          '<div class="card-header"><span class="card-title">Perishables</span>' +
+            '<span class="card-count">' + perishables.length + '</span></div>' +
+          '<div style="max-height:400px;overflow-y:auto">' +
+            (perishables.length === 0
+              ? '<div class="card-empty">No active perishables.</div>'
+              : perishables.map(function(item) {
+                  return '<div class="stock-item">' +
+                    '<div class="stock-item-info">' +
+                      '<span class="stock-item-name">' + esc(item.ingredientName) + '</span>' +
+                      '<span class="text-muted" style="font-size:11px">' + (item.useByDate || '') + '</span>' +
+                    '</div>' +
+                    '<div style="display:flex;gap:6px;align-items:center">' +
+                      stateBadge(item.state) +
+                      '<button class="btn btn-secondary btn-sm" style="padding:3px 8px;font-size:11px"' +
+                        ' onclick="markUsed(' + item.id + ')">Mark used</button>' +
+                      '<button class="btn-icon-remove" onclick="markUsed(' + item.id + ')" title="Mark used">×</button>' +
+                    '</div>' +
+                  '</div>';
+                }).join('')
+            ) +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+    '</div>' + // grid
+  '</div>';
+}
+
+// ── Pantry actions ────────────────────────────────────────────
+
+function addPantryItemFromForm() {
+  var rawName  = document.getElementById('pantry-ing-input').value.trim();
+  if (!rawName) { toast('Enter an ingredient name', 'error'); return; }
+  var isStaple = document.getElementById('pantry-staple').checked;
+
+  // Resolve ingredient ID from master list name
+  resolveIngredientForStock_(rawName)
+    .then(function(result) {
+      return gs('addOrUpdatePantryItem', result.id, result.name, isStaple);
+    })
+    .then(function() {
+      toast(rawName + ' added to pantry', 'success');
+      App.state.searchCache = null;
+      App.loadStock();
+    })
+    .catch(function(e) { toast('Failed: ' + e.message, 'error'); });
+}
+
+function togglePantryOos(ingredientId, outOfStock) {
+  gs('setPantryOutOfStock', ingredientId, outOfStock)
+    .then(function() { App.loadStock(); })
+    .catch(function(e) { toast('Failed: ' + e.message, 'error'); });
+}
+
+function removePantryItemById(ingredientId) {
+  gs('removePantryItem', ingredientId)
+    .then(function() { App.loadStock(); })
+    .catch(function(e) { toast('Failed: ' + e.message, 'error'); });
+}
+
+// ── Perishable actions ────────────────────────────────────────
+
+function addPerishableFromForm() {
+  var rawName = document.getElementById('perish-ing-input').value.trim();
+  var useBy   = document.getElementById('perish-use-by').value;
+
+  if (!rawName) { toast('Enter an ingredient name', 'error'); return; }
+  if (!useBy)   { toast('Enter a use-by date', 'error'); return; }
+
+  resolveIngredientForStock_(rawName)
+    .then(function(result) {
+      return gs('addPerishable', result.id, result.name, useBy);
+    })
+    .then(function() {
+      toast(rawName + ' added to perishables', 'success');
+      App.state.searchCache = null;
+      App.loadStock();
+    })
+    .catch(function(e) { toast('Failed: ' + e.message, 'error'); });
+}
+
+function markUsed(perishableId) {
+  gs('markPerishableUsed', perishableId)
+    .then(function() { App.loadStock(); })
+    .catch(function(e) { toast('Failed: ' + e.message, 'error'); });
+}
+
+// ── Ingredient resolution for stock forms ─────────────────────
+
+/**
+ * Resolves a typed ingredient name to a master {id, name}.
+ * Tries the cached master list first; falls back to server-side
+ * resolveOrCreate via addRecipeIngredient route (reuses the same logic).
+ * Returns a Promise resolving to {id, name}.
+ */
+function resolveIngredientForStock_(rawName) {
+  // Check master list cache on App state
+  var masterList = App.state.masterList || [];
+  var match = masterList.find(function(i) {
+    return i.name.toLowerCase() === rawName.toLowerCase();
+  });
+  if (match) return Promise.resolve({ id: match.id, name: match.name });
+
+  // Not in cache — resolve/create server-side by adding a dummy
+  // recipe ingredient lookup (reuses resolveOrCreateIngredient_ logic)
+  return gs('resolveIngredientByName', rawName);
+}
+</script>
