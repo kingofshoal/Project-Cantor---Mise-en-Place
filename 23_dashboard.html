@@ -1,0 +1,164 @@
+<script>
+// ============================================================
+// 23_dashboard.html — Dashboard view renderers
+// ============================================================
+
+function renderDashboard(data) {
+  const summary = data.matchSummary || {};
+  const canCook = summary['Can Cook Now'] || 0;
+  const total   = summary.total || 0;
+
+  return '<div class="view">' +
+    '<div class="page-header flex-between">' +
+      '<div>' +
+        '<div class="page-title">Good to cook</div>' +
+        '<div class="page-sub">' + canCook + ' of ' + total + ' recipes ready now</div>' +
+      '</div>' +
+      '<button class="btn btn-secondary btn-sm" onclick="App.loadDashboard()">↻ Refresh</button>' +
+    '</div>' +
+    '<div class="dashboard-grid">' +
+      renderCookTonightTile(data.cookTonight || []) +
+      renderUseUpTile(data.useUp || []) +
+      renderBuyTile(data.buy || []) +
+      renderRecentTile(data.recent || []) +
+    '</div>' +
+  '</div>';
+}
+
+function renderCookTonightTile(items) {
+  const header = '<div class="card-header">' +
+    '<span class="card-title">🍳 Cook Tonight</span>' +
+    '<span class="card-count">' + items.length + '</span>' +
+    '</div>';
+
+  if (items.length === 0) {
+    return '<div class="card">' + header +
+      '<div class="card-empty">No recipes match your current stock.<br>' +
+      '<a href="#search" style="color:var(--blue);font-size:13px;margin-top:8px;display:inline-block">Browse all recipes →</a>' +
+      '</div></div>';
+  }
+
+  const rows = items.map(function(r) {
+    const pct = Math.round((r.compositeScore || 0) * 100);
+    return '<div class="recipe-item" data-recipe-id="' + r.recipeId + '">' +
+      '<div class="recipe-item-info">' +
+        '<div class="recipe-item-name">' + esc(r.recipeName) + '</div>' +
+        '<div class="recipe-item-meta">' + scoreBar(r.compositeScore) + '</div>' +
+      '</div>' +
+      '<div class="recipe-item-score">' +
+        '<div class="score-num">' + pct + '%</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="card">' + header + '<div class="card-body">' + rows + '</div></div>';
+}
+
+function renderUseUpTile(items) {
+  const header = '<div class="card-header">' +
+    '<span class="card-title">⏰ Use Up</span>' +
+    '<span class="card-count">' + items.length + '</span>' +
+    '</div>';
+
+  if (items.length === 0) {
+    return '<div class="card">' + header +
+      '<div class="card-empty">No near-expiry ingredients found.</div></div>';
+  }
+
+  // Group by ingredient for display
+  const byIng = {};
+  const ingOrder = [];
+  items.forEach(function(r) {
+    const key = r.ingredientId;
+    if (!byIng[key]) { byIng[key] = []; ingOrder.push(key); }
+    byIng[key].push(r);
+  });
+
+  const rows = ingOrder.slice(0, 5).map(function(ingId) {
+    const group = byIng[ingId];
+    const first = group[0];
+    const topRecipe = group[0]; // already sorted by score
+    return '<div class="useup-item" data-recipe-id="' + topRecipe.recipeId + '">' +
+      '<div class="useup-ingredient">' +
+        '<span class="useup-name">' + esc(first.ingredientName) + '</span>' +
+        stateBadge(first.state) +
+        '<span class="text-muted" style="font-size:11px;margin-left:auto">' + (first.useByDate || '') + '</span>' +
+      '</div>' +
+      '<div class="useup-recipe">' +
+        group.slice(0, 2).map(function(r) {
+          return '<span style="margin-right:8px;cursor:pointer;color:var(--blue)"' +
+            ' onclick="event.stopPropagation();window.location.hash=\'#recipe/' + r.recipeId + '\'">' +
+            esc(r.recipeName) + ' [' + Math.round(r.compositeScore * 100) + '%]</span>';
+        }).join('') +
+        (group.length > 2 ? '<span class="text-muted">+' + (group.length - 2) + ' more</span>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="card">' + header + '<div class="card-body">' + rows + '</div></div>';
+}
+
+function renderBuyTile(items) {
+  const header = '<div class="card-header">' +
+    '<span class="card-title">🛒 Buy to Unlock</span>' +
+    '<span class="card-count">' + items.length + '</span>' +
+    '</div>';
+
+  if (items.length === 0) {
+    return '<div class="card">' + header +
+      '<div class="card-empty">No near-match recipes found.<br>Add more recipes or stock more ingredients.</div></div>';
+  }
+
+  const rows = items.map(function(item) {
+    const unlocks = item.unlockCount;
+    return '<div class="buy-item">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div class="buy-name">' + esc(item.ingredientName) + '</div>' +
+        (unlocks > 0
+          ? '<div class="buy-sub">unlocks ' + unlocks + ' recipe' + (unlocks > 1 ? 's' : '') + ' instantly</div>'
+          : '') +
+      '</div>' +
+      '<span class="buy-badge">' + unlocks + ' unlock' + (unlocks !== 1 ? 's' : '') + '</span>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="card">' + header + '<div class="card-body">' + rows + '</div></div>';
+}
+
+function renderRecentTile(items) {
+  const header = '<div class="card-header">' +
+    '<span class="card-title">📖 Recent</span>' +
+    '<span class="card-count">' + items.length + '</span>' +
+    '</div>';
+
+  if (items.length === 0) {
+    return '<div class="card">' + header +
+      '<div class="card-empty">No meals logged yet.<br>Cook something and log it!</div></div>';
+  }
+
+  const rows = items.map(function(r) {
+    return '<div class="recent-item" data-recipe-id="' + r.recipeId + '">' +
+      '<div class="recent-info">' +
+        '<div class="recent-name">' + esc(r.recipeName) + '</div>' +
+        '<div class="recent-date">' + (r.cookedDate || '') +
+          (r.reviewCount > 0 ? ' · ' + r.reviewCount + ' review' + (r.reviewCount > 1 ? 's' : '') : '') +
+        '</div>' +
+      '</div>' +
+      (r.familyApproved ? '<span class="fa-badge">★ Approved</span>' : '') +
+      (r.avgRating ? starRating(r.avgRating) : '') +
+    '</div>';
+  }).join('');
+
+  return '<div class="card">' + header + '<div class="card-body">' + rows + '</div></div>';
+}
+
+// HTML-escape helper
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+</script>
