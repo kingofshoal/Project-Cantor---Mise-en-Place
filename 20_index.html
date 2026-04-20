@@ -14,9 +14,11 @@
       <span class="nav-title">Project Cantor</span>
     </div>
     <div class="nav-links" id="nav-links">
-      <a href="#dashboard" class="nav-link active" data-view="dashboard">Dashboard</a>
-      <a href="#search"    class="nav-link"        data-view="search">Recipes</a>
-      <a href="#admin"     class="nav-link"        data-view="admin">Admin</a>
+      <a href="#dashboard"      class="nav-link active" data-view="dashboard">Dashboard</a>
+      <a href="#search"         class="nav-link"        data-view="search">Recipes</a>
+      <a href="#stock"          class="nav-link"        data-view="stock">Stock</a>
+      <a href="#add-ingredient" class="nav-link"        data-view="add-ingredient">+ Ingredient</a>
+      <a href="#admin"          class="nav-link"        data-view="admin">Admin</a>
     </div>
     <div class="nav-status" id="nav-status"></div>
   </nav>
@@ -40,6 +42,8 @@
   <?!= include('22_app') ?>
   <?!= include('23_dashboard') ?>
   <?!= include('24_recipeDetail') ?>
+  <?!= include('25_recipeForm') ?>
+  <?!= include('26_stockForm') ?>
 
 </body>
 </html>
