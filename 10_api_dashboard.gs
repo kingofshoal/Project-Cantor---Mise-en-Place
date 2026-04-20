@@ -129,6 +129,122 @@ function getBuyTile(limit) {
  * @param {number} [params.limit=50]
  * @returns {{ success: boolean, data?: Object[], error?: string }}
  */
+/**
+ * Returns all ingredients from Ingredients_Master for autocomplete.
+ * @returns {{ success: boolean, data?: Object[], error?: string }}
+ */
+function getIngredientMasterList() {
+  const FN = 'getIngredientMasterList';
+  try {
+    const rows  = getAllRows(CONFIG.SHEETS.INGREDIENTS_MASTER);
+    const cId   = CONFIG.COL.INGREDIENTS_MASTER.ID           - 1;
+    const cName = CONFIG.COL.INGREDIENTS_MASTER.NAME         - 1;
+    const cCat  = CONFIG.COL.INGREDIENTS_MASTER.CATEGORY     - 1;
+    const cTax  = CONFIG.COL.INGREDIENTS_MASTER.TAXONOMY_TAG - 1;
+    return ok_(rows.map(r => ({
+      id:          Number(r[cId]),
+      name:        str(r[cName]),
+      category:    str(r[cCat]),
+      taxonomyTag: str(r[cTax]),
+    })));
+  } catch (e) {
+    return err_(`${FN} failed: ${e.message}`, FN);
+  }
+}
+
+/**
+ * Returns active household members for reviewer dropdowns.
+ * @returns {{ success: boolean, data?: Object[], error?: string }}
+ */
+/**
+ * Resolves or creates an ingredient by name, returning {id, name}.
+ * Used by the stock forms to resolve free-text ingredient entry.
+ * @param {string} rawName
+ * @returns {{ success: boolean, data?: Object, error?: string }}
+ */
+function resolveIngredientByName(rawName) {
+  const FN = 'resolveIngredientByName';
+  try {
+    if (!str(rawName)) return err_('rawName is required', FN);
+    const id  = resolveOrCreateIngredient_(rawName);
+    const ing = getIngredientById(id);
+    return ok_({ id, name: ing ? str(ing.NAME) : str(rawName) });
+  } catch (e) {
+    return err_(`${FN} failed: ${e.message}`, FN);
+  }
+}
+
+function getHouseholdPeople() {
+  const FN = 'getHouseholdPeople';
+  try {
+    const rows    = getAllRows(CONFIG.SHEETS.HOUSEHOLD_PEOPLE);
+    const cId     = CONFIG.COL.HOUSEHOLD_PEOPLE.ID        - 1;
+    const cName   = CONFIG.COL.HOUSEHOLD_PEOPLE.NAME      - 1;
+    const cActive = CONFIG.COL.HOUSEHOLD_PEOPLE.IS_ACTIVE - 1;
+    return ok_(rows
+      .filter(r => r[cActive] === true)
+      .map(r => ({ id: Number(r[cId]), name: str(r[cName]) }))
+    );
+  } catch (e) {
+    return err_(`${FN} failed: ${e.message}`, FN);
+  }
+}
+
+/**
+ * Returns current pantry stock for the stock management view.
+ * @returns {{ success: boolean, data?: Object[], error?: string }}
+ */
+function getPantryStockList() {
+  const FN = 'getPantryStockList';
+  try {
+    const rows  = getAllRows(CONFIG.SHEETS.PANTRY_STOCK);
+    const cId   = CONFIG.COL.PANTRY_STOCK.ID              - 1;
+    const cIngId= CONFIG.COL.PANTRY_STOCK.INGREDIENT_ID   - 1;
+    const cName = CONFIG.COL.PANTRY_STOCK.INGREDIENT_NAME - 1;
+    const cStal = CONFIG.COL.PANTRY_STOCK.IS_STAPLE       - 1;
+    const cOos  = CONFIG.COL.PANTRY_STOCK.OUT_OF_STOCK    - 1;
+    const cUpd  = CONFIG.COL.PANTRY_STOCK.LAST_UPDATED    - 1;
+    return ok_(rows.map(r => ({
+      id:             Number(r[cId]),
+      ingredientId:   Number(r[cIngId]),
+      ingredientName: str(r[cName]),
+      isStaple:       r[cStal] === true,
+      outOfStock:     r[cOos]  === true,
+      lastUpdated:    str(r[cUpd]),
+    })));
+  } catch (e) {
+    return err_(`${FN} failed: ${e.message}`, FN);
+  }
+}
+
+/**
+ * Returns active perishable stock entries for the stock management view.
+ * @returns {{ success: boolean, data?: Object[], error?: string }}
+ */
+function getPerishableStockList() {
+  const FN = 'getPerishableStockList';
+  try {
+    const rows  = getAllRows(CONFIG.SHEETS.PERISHABLE_STOCK);
+    const cId   = CONFIG.COL.PERISHABLE_STOCK.ID              - 1;
+    const cIngId= CONFIG.COL.PERISHABLE_STOCK.INGREDIENT_ID   - 1;
+    const cName = CONFIG.COL.PERISHABLE_STOCK.INGREDIENT_NAME - 1;
+    const cUseBy= CONFIG.COL.PERISHABLE_STOCK.USE_BY_DATE     - 1;
+    const cState= CONFIG.COL.PERISHABLE_STOCK.STATE           - 1;
+    return ok_(rows
+      .filter(r => str(r[cState]) !== CONFIG.PERISHABLE_STATES.USED)
+      .map(r => ({
+        id:             Number(r[cId]),
+        ingredientId:   Number(r[cIngId]),
+        ingredientName: str(r[cName]),
+        useByDate:      r[cUseBy] ? formatDate(new Date(r[cUseBy])) : '',
+        state:          str(r[cState]),
+      }))
+    );
+  } catch (e) {
+    return err_(`${FN} failed: ${e.message}`, FN);
+  }
+}
+
 function searchRecipes(params) {
   const FN = 'searchRecipes';
   try {
