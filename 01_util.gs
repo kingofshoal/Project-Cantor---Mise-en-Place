@@ -3,6 +3,17 @@
 // Shared utility functions used across all modules.
 // ============================================================
 
+// ── Spreadsheet Access ────────────────────────────────────────
+
+/**
+ * Returns the Cantor spreadsheet by ID from CONFIG.
+ * Using openById() supports both standalone and bound scripts.
+ * @returns {GoogleAppsScript.Spreadsheet.Spreadsheet}
+ */
+function getSpreadsheet() {
+  return SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+}
+
 // ── Sheet Access ──────────────────────────────────────────────
 
 /**
@@ -11,7 +22,7 @@
  * @returns {GoogleAppsScript.Spreadsheet.Sheet}
  */
 function getSheet(name) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
+  const sheet = getSpreadsheet().getSheetByName(name);
   if (!sheet) throw new Error(`getSheet: sheet not found — "${name}"`);
   return sheet;
 }
