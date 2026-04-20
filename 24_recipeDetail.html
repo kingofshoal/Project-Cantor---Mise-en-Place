@@ -1,0 +1,275 @@
+<script>
+// ============================================================
+// 24_recipeDetail.html — Recipe detail, search, and admin views
+// ============================================================
+
+// ── Search View ───────────────────────────────────────────────
+
+function renderSearchView(results, query, activeFilters) {
+  const groups  = ['Can Cook Now','Near Match','Missing A Few Items','Shopping Required'];
+  const bands   = ['Quick','Standard','Project'];
+
+  const groupChips = groups.map(function(g) {
+    const active = activeFilters.resultGroup === g ? ' active' : '';
+    return '<button class="filter-chip' + active + '" data-key="resultGroup" data-val="' + g + '">' + g + '</button>';
+  }).join('');
+
+  const bandChips = bands.map(function(b) {
+    const active = activeFilters.timeBand === b ? ' active' : '';
+    return '<button class="filter-chip' + active + '" data-key="timeBand" data-val="' + b + '">' + b + '</button>';
+  }).join('');
+
+  const approvedChip = '<button class="filter-chip' + (activeFilters.familyApproved ? ' active' : '') +
+    '" data-key="familyApproved" data-val="true">★ Family Approved</button>';
+
+  return '<div class="view">' +
+    '<div class="page-header">' +
+      '<div class="page-title">Recipes</div>' +
+    '</div>' +
+    '<div class="search-bar">' +
+      '<input id="search-input" class="search-input" type="text" placeholder="Search by name, ingredient, or tag…" value="' + esc(query) + '">' +
+    '</div>' +
+    '<div class="search-filters">' +
+      groupChips + bandChips + approvedChip +
+    '</div>' +
+    '<div class="flex-between" style="margin-bottom:12px">' +
+      '<span id="result-count" class="text-muted">' + results.length + ' recipes</span>' +
+    '</div>' +
+    '<div id="search-results">' + renderResultCards(results) + '</div>' +
+  '</div>';
+}
+
+function renderResultCards(results) {
+  if (results.length === 0) {
+    return '<div style="padding:48px;text-align:center;color:var(--text-muted)">No recipes match your search.</div>';
+  }
+  return results.slice(0, 100).map(function(r) {
+    const pct = Math.round((r.compositeScore || 0) * 100);
+    return '<div class="result-card" data-recipe-id="' + r.recipeId + '">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div class="result-name">' + esc(r.recipeName) + '</div>' +
+        '<div class="result-meta">' +
+          groupBadge(r.resultGroup) +
+          (r.timeBand ? '<span class="badge badge-muted">' + esc(r.timeBand) + '</span>' : '') +
+          (r.skillLevel ? '<span class="badge badge-muted">' + esc(r.skillLevel) + '</span>' : '') +
+          (r.familyApproved ? '<span class="fa-badge">★ Approved</span>' : '') +
+          (r.avgRating ? starRating(r.avgRating) : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="result-score-col">' +
+        '<div style="font-size:15px;font-weight:800;color:var(--navy)">' + pct + '%</div>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-top:1px">' +
+          (r.missingCount > 0 ? r.missingCount + ' missing' : '✓ ready') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+// ── Recipe Detail ─────────────────────────────────────────────
+
+function renderRecipeDetail(data) {
+  const recipe = data.recipe;
+  const score  = data.score;
+  const rs     = data.reviewSignals;
+
+  const statusClass = recipe.status === 'Approved' ? 'badge-green' : 'badge-muted';
+
+  const header = '<div class="detail-header">' +
+    '<a href="#search" style="font-size:13px;color:var(--blue);display:inline-block;margin-bottom:12px">← Back to recipes</a>' +
+    '<div class="detail-title">' + esc(recipe.name) + '</div>' +
+    '<div class="detail-badges">' +
+      '<span class="badge ' + statusClass + '">' + esc(recipe.status) + '</span>' +
+      (recipe.timeBand   ? '<span class="badge badge-muted">'   + esc(recipe.timeBand)   + '</span>' : '') +
+      (recipe.skillLevel ? '<span class="badge badge-purple">' + esc(recipe.skillLevel) + '</span>' : '') +
+      (rs && rs.familyApproved ? '<span class="fa-badge">★ Family Approved</span>' : '') +
+      (score  ? groupBadge(score.resultGroup) : '') +
+    '</div>' +
+    (recipe.tags && recipe.tags.length
+      ? '<div style="margin-top:6px">' +
+          recipe.tags.map(function(t) {
+            return '<span style="font-size:12px;color:var(--text-muted);margin-right:8px">#' + esc(t) + '</span>';
+          }).join('') +
+        '</div>' : '') +
+    '<div class="detail-actions">' +
+      '<button id="btn-log-meal" class="btn btn-green">🍳 Log Meal</button>' +
+      '<button id="btn-add-review" class="btn btn-secondary">★ Add Review</button>' +
+      '<button id="btn-shopping-list" class="btn btn-secondary">🛒 Shopping List</button>' +
+    '</div>' +
+  '</div>';
+
+  const scoreCard = score ? '<div class="card" style="margin-bottom:20px">' +
+    '<div class="card-header"><span class="card-title">Score Breakdown</span>' +
+      '<span class="score-num">' + Math.round(score.compositeScore * 100) + '%</span>' +
+    '</div>' +
+    '<div class="score-breakdown">' +
+      renderScoreRow('Ingredient Match', score.matchScore, '60%') +
+      renderScoreRow('Cookability',      score.cookabilityScore, '25%') +
+      renderScoreRow('Use-Up Bonus',     score.useUpBonus, '15%') +
+      '<div class="divider"></div>' +
+      '<div class="score-row"><span class="score-label" style="font-weight:700">Composite</span>' +
+        scoreBar(score.compositeScore, 'lg') +
+        '<span class="score-val">' + Math.round(score.compositeScore * 100) + '%</span>' +
+      '</div>' +
+      (score.missingCount > 0
+        ? '<p class="text-muted" style="margin-top:8px;font-size:12px">' +
+            score.missingCount + ' ingredient' + (score.missingCount > 1 ? 's' : '') + ' missing' +
+            (score.missingPrimaries > 0 ? ' (' + score.missingPrimaries + ' primary)' : '') +
+          '</p>'
+        : '<p style="color:var(--green);font-size:13px;font-weight:600;margin-top:8px">✓ All ingredients present</p>') +
+    '</div>' +
+  '</div>' : '';
+
+  // Ingredient list
+  const ingCard = '<div class="card">' +
+    '<div class="card-header">' +
+      '<span class="card-title">Ingredients</span>' +
+      '<span class="card-count">' + data.ingredients.length + '</span>' +
+    '</div>' +
+    '<ul class="ing-list">' +
+    data.ingredients.map(function(ing) {
+      const checkClass = ing.isPresent ? 'present' : 'missing';
+      const checkIcon  = ing.isPresent ? '✓' : '✗';
+      return '<li class="ing-item">' +
+        '<div class="ing-check ' + checkClass + '">' + checkIcon + '</div>' +
+        (ing.isPrimary ? '<div class="ing-primary-dot"></div>' : '') +
+        '<span class="ing-name' + (ing.isPrimary ? ' primary' : '') + '">' + esc(ing.ingredientName) + '</span>' +
+        (ing.quantityNote ? '<span class="ing-qty">' + esc(ing.quantityNote) + (ing.unitNote ? ' ' + esc(ing.unitNote) : '') + '</span>' : '') +
+      '</li>';
+    }).join('') +
+    '</ul>' +
+    '<p style="padding:8px 18px;font-size:11px;color:var(--text-muted)">● Primary ingredients</p>' +
+  '</div>';
+
+  // Method
+  const methodCard = data.method.length === 0 ? '' :
+    '<div class="card mt-16">' +
+    '<div class="card-header"><span class="card-title">Method</span></div>' +
+    '<ol class="method-list">' +
+    data.method.map(function(step) {
+      return '<li class="method-item">' +
+        '<span class="method-num">' + step.stepNumber + '</span>' +
+        '<span>' + esc(step.stepText) + '</span>' +
+      '</li>';
+    }).join('') +
+    '</ol></div>';
+
+  // Reviews
+  const reviewCard = '<div class="card mt-16">' +
+    '<div class="card-header">' +
+      '<span class="card-title">Reviews</span>' +
+      (rs ? '<span class="card-count">' +
+        (rs.avgRating ? rs.avgRating.toFixed(1) + '★ · ' : '') +
+        rs.reviewerCoverage + ' members' +
+      '</span>' : '') +
+    '</div>' +
+    (data.reviews.length === 0
+      ? '<div class="card-empty">No reviews yet — cook it and leave a note.</div>'
+      : data.reviews.map(function(r) {
+          return '<div class="review-item">' +
+            '<div class="review-header">' +
+              '<span class="review-person">' + esc(r.personName) + '</span>' +
+              starRating(r.rating) +
+              '<span class="review-date">' + (r.reviewDate || '') + '</span>' +
+            '</div>' +
+            (r.comment ? '<div class="review-comment">' + esc(r.comment) + '</div>' : '') +
+          '</div>';
+        }).join('')) +
+  '</div>';
+
+  const leftCol  = scoreCard + ingCard;
+  const rightCol = methodCard + reviewCard;
+
+  return '<div class="view">' +
+    header +
+    '<div class="detail-grid">' +
+      '<div>' + leftCol + '</div>' +
+      '<div>' + rightCol + '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderScoreRow(label, val, weight) {
+  const pct = Math.round((val || 0) * 100);
+  return '<div class="score-row">' +
+    '<span class="score-label">' + label + ' <span style="color:var(--text-muted);font-size:11px">(' + weight + ')</span></span>' +
+    scoreBar(val, 'lg') +
+    '<span class="score-val">' + pct + '%</span>' +
+  '</div>';
+}
+
+// ── Admin View ────────────────────────────────────────────────
+
+function renderAdminView(status) {
+  const health = status.health || {};
+  const sheets = status.sheets || {};
+
+  const healthRows = [
+    ['Sheets created',   health.sheetsAllPresent, health.sheetsAllPresent ? 'All present' : 'Run createAllSheets()'],
+    ['Recipes loaded',   health.hasRecipes,       health.hasRecipes ? 'Yes' : 'No recipes yet'],
+    ['Stock loaded',     health.hasStock,         health.hasStock ? 'Yes' : 'No stock entries yet'],
+    ['Summary built',    health.summaryBuilt,     health.summaryBuilt ? 'Yes' : 'Run Rebuild Now'],
+    ['Last rebuilt',     !!health.lastRebuilt,    health.lastRebuilt || 'Never'],
+  ];
+
+  const dataSheets = ['RECIPES','RECIPE_INGREDIENTS','INGREDIENTS_MASTER',
+    'PANTRY_STOCK','PERISHABLE_STOCK','HOUSEHOLD_PEOPLE','MEAL_HISTORY','RECIPE_REVIEWS'];
+  const summarySheets = ['SUMMARY_MATCH','SUMMARY_USEUP','SUMMARY_BUY_UNLOCK','SUMMARY_REVIEWS'];
+
+  function sheetRows(keys) {
+    return keys.map(function(k) {
+      const s = sheets[k] || {};
+      return '<tr><td>' + esc(s.name || k) + '</td>' +
+        '<td style="text-align:right;font-weight:600">' + (s.rows || 0) + '</td>' +
+        '<td>' + (s.exists ? '<span class="status-ok">OK</span>' : '<span class="status-err">Missing</span>') + '</td></tr>';
+    }).join('');
+  }
+
+  return '<div class="view">' +
+    '<div class="page-header flex-between">' +
+      '<div><div class="page-title">Admin</div>' +
+        '<div class="page-sub">System status and rebuild controls</div></div>' +
+      '<button id="btn-rebuild" class="btn btn-primary">↺ Rebuild Now</button>' +
+    '</div>' +
+    '<div class="admin-grid">' +
+
+      // Health card
+      '<div class="card">' +
+        '<div class="card-header"><span class="card-title">System Health</span></div>' +
+        '<table class="status-table"><thead><tr><th>Check</th><th>Status</th><th></th></tr></thead><tbody>' +
+        healthRows.map(function(row) {
+          const cls = row[1] ? 'status-ok' : 'status-warn';
+          return '<tr><td>' + row[0] + '</td><td class="' + cls + '">' +
+            (row[1] ? '✓' : '⚠') + '</td><td style="color:var(--text-muted);font-size:12px">' +
+            esc(String(row[2])) + '</td></tr>';
+        }).join('') +
+        '</tbody></table></div>' +
+
+      // Actions card
+      '<div class="card">' +
+        '<div class="card-header"><span class="card-title">Actions</span></div>' +
+        '<div style="padding:16px;display:flex;flex-direction:column;gap:10px">' +
+          '<p class="text-muted" style="font-size:13px">Rebuild refreshes all four summary sheets from current stock and recipe data. Run after adding recipes, updating stock, or logging meals.</p>' +
+          '<button id="btn-rebuild" class="btn btn-primary" style="width:100%">↺ Rebuild All Summaries</button>' +
+          '<a href="#dashboard" class="btn btn-secondary" style="text-align:center">← Back to Dashboard</a>' +
+        '</div>' +
+      '</div>' +
+
+      // Data sheets card
+      '<div class="card">' +
+        '<div class="card-header"><span class="card-title">Data Sheets</span></div>' +
+        '<table class="status-table"><thead><tr><th>Sheet</th><th style="text-align:right">Rows</th><th>Status</th></tr></thead>' +
+        '<tbody>' + sheetRows(dataSheets) + '</tbody></table>' +
+      '</div>' +
+
+      // Summary sheets card
+      '<div class="card">' +
+        '<div class="card-header"><span class="card-title">Summary Sheets</span></div>' +
+        '<table class="status-table"><thead><tr><th>Sheet</th><th style="text-align:right">Rows</th><th>Status</th></tr></thead>' +
+        '<tbody>' + sheetRows(summarySheets) + '</tbody></table>' +
+      '</div>' +
+
+    '</div>' + // admin-grid
+  '</div>';
+}
+</script>
